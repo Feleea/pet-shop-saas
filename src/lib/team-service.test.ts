@@ -68,13 +68,13 @@ function memoryRepo() {
       if (!i || !pending(i, now)) return null;
       if (users.some((u) => u.tenantId === tenantId && same(u.email, i.email))) throw new ConflictError(USER_EXISTS_MESSAGE);
       i.acceptedAt = now;
-      const u = { id: `u${++seq}`, tenantId, name: i.name, email: i.email, role: i.role, createdAt: now, passwordHash };
+      const u = { id: `u${++seq}`, tenantId, name: i.name, email: i.email, role: i.role, status: "ACTIVE" as const, vacationReturnsAt: null, createdAt: now, passwordHash };
       users.push(u);
       return { userId: u.id };
     },
   };
   const addUser = (tenantId: string, email: string, role: Role = "ADMIN") =>
-    users.push({ id: `u${++seq}`, tenantId, name: "Admin", email, role, createdAt: new Date(), passwordHash: "x" });
+    users.push({ id: `u${++seq}`, tenantId, name: "Admin", email, role, status: "ACTIVE", vacationReturnsAt: null, createdAt: new Date(), passwordHash: "x" });
   return { repo, users, invites, addUser };
 }
 
@@ -186,7 +186,7 @@ describe("aceitar", () => {
     const { token } = await inviteUser(repo, admin("A"), { ...carla, role: "VET" }, { now: NOW });
     const session = await acceptInvite(repo, token, pwd, NOW);
     expect(session).toMatchObject({ tenantId: "A", role: "VET" });
-    expect(users[0]).toMatchObject({ email: "carla@mail.com", name: "Carla", role: "VET" });
+    expect(users[0]).toMatchObject({ email: "carla@mail.com", name: "Carla", role: "VET", status: "ACTIVE" });
   });
 
   it("a senha é guardada com hash, nunca em texto puro", async () => {

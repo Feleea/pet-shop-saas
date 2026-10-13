@@ -4,6 +4,7 @@ import { generateInviteToken, hashToken } from "./invite-token";
 import { assertCan } from "./permissions";
 import type { Role, SessionPayload } from "./session";
 import { acceptSchema, inviteSchema, type InvitableRole } from "./team-validation";
+import type { UserStatus } from "./user-status";
 
 export const INVITE_TTL_DAYS = 7;
 export const USER_EXISTS_MESSAGE = "Já existe um usuário com este e-mail";
@@ -14,6 +15,8 @@ export interface TeamUser {
   name: string;
   email: string;
   role: Role;
+  status: UserStatus;
+  vacationReturnsAt: Date | null;
   createdAt: Date;
 }
 export interface InviteRecord {

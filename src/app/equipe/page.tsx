@@ -3,11 +3,17 @@ import { redirect } from "next/navigation";
 import { can } from "@/lib/permissions";
 import { requireSession } from "@/lib/session-cookie";
 import { ROLE_LABEL, formatDateBR } from "@/lib/team-format";
+import { STATUS_LABEL, type UserStatus } from "@/lib/user-status";
 import { prismaTeamRepo } from "@/lib/team-repo";
 import { listTeam } from "@/lib/team-service";
 import { ConfirmSubmit } from "../confirm-submit";
 import { revokeInviteAction } from "./actions";
 import { InviteForm } from "./invite-form";
+import { StatusControls } from "./status-controls";
+
+function statusText(status: UserStatus, returnsAt: Date | null) {
+  return status === "VACATION" && returnsAt ? `${STATUS_LABEL.VACATION} (volta em ${formatDateBR(returnsAt)})` : STATUS_LABEL[status];
+}
 
 export const dynamic = "force-dynamic";
 
@@ -30,14 +36,21 @@ export default async function EquipePage() {
             <th align="left">Nome</th>
             <th align="left">E-mail</th>
             <th align="left">Papel</th>
+            <th align="left">Situação</th>
+            <th align="left">Ações</th>
           </tr>
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.id}>
+            <tr key={u.id} style={{ opacity: u.status === "ACTIVE" ? 1 : 0.6 }}>
               <td>{u.name}</td>
               <td>{u.email}</td>
               <td>{ROLE_LABEL[u.role]}</td>
+              <td data-testid="user-status">{statusText(u.status, u.vacationReturnsAt)}</td>
+              <td>
+                {/* O administrador e a própria pessoa logada não têm controles: evita se trancar para fora. */}
+                {u.role === "ADMIN" || u.id === session.userId ? "—" : <StatusControls userId={u.id} status={u.status} />}
+              </td>
             </tr>
           ))}
         </tbody>

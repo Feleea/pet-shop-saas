@@ -11,7 +11,7 @@ export const prismaTeamRepo: TeamRepo = {
   listUsers: (tenantId) =>
     db.user.findMany({
       where: withTenant({ tenantId }),
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, status: true, vacationReturnsAt: true, createdAt: true },
       orderBy: { name: "asc" },
     }),
 

@@ -14,6 +14,14 @@ enum Role {
   VET
 }
 
+// Situação do acesso do usuário. INACTIVE e VACATION bloqueiam login e sessões já abertas.
+// VACATION guarda a data prevista de retorno (vacationReturnsAt) para a futura reativação automática.
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  VACATION
+}
+
 enum Species {
   DOG
   CAT
@@ -49,8 +57,14 @@ model User {
   role         Role     @default(ATTENDANT)
   createdAt    DateTime @default(now())
 
+  status            UserStatus @default(ACTIVE)
+  vacationReturnsAt DateTime?
+  statusChangedAt   DateTime   @default(now())
+
   @@unique([tenantId, email])
   @@index([tenantId])
+  // apoia a futura rotina que reativa quem está de férias (status = VACATION e vacationReturnsAt <= agora)
+  @@index([status, vacationReturnsAt])
 }
 
 // Tutor / cliente do pet shop

@@ -1,39 +1,6 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
-import { registerShop, unique } from "./helpers";
-
-type Role = "ATTENDANT" | "GROOMER" | "VET";
-
-/** Cria um pet shop e devolve o e-mail do admin (para testes que precisam dele). */
-async function newShopWithAdmin(page: Page, label = "Loja") {
-  const email = `admin-${unique()}@mail.com`;
-  await registerShop(page, `${label} ${unique()}`, "Admin", email, "senha-forte-1");
-  return email;
-}
-
-/** Gera o convite pela tela de equipe e devolve o link completo. */
-async function inviteUi(page: Page, name: string, email: string, role: Role = "ATTENDANT"): Promise<string> {
-  await page.goto("/equipe");
-  await page.getByLabel("Nome do convidado").fill(name);
-  await page.getByLabel("E-mail do convidado").fill(email);
-  await page.getByLabel("Papel").selectOption(role);
-  await page.getByRole("button", { name: "Gerar convite" }).click();
-  const link = page.getByTestId("invite-link");
-  await expect(link).toBeVisible();
-  return (await link.textContent())!;
-}
-
-async function acceptUi(page: Page, link: string, password = "senha-forte-1", confirm = password) {
-  await page.goto(link);
-  await page.getByLabel("Senha", { exact: true }).fill(password);
-  await page.getByLabel("Confirmar senha").fill(confirm);
-  await page.getByRole("button", { name: "Aceitar convite" }).click();
-}
-
-/** Abre um contexto limpo (sem login), como a pessoa convidada faria. */
-async function guestPage(browser: Browser) {
-  const ctx = await browser.newContext();
-  return { ctx, page: await ctx.newPage() };
-}
+import { expect, test } from "@playwright/test";
+import { unique } from "./helpers";
+import { acceptUi, guestPage, inviteUi, newShopWithAdmin } from "./team-helpers";
 
 test("admin convida um atendente, que aceita o convite e entra no pet shop", async ({ page, browser }) => {
   await newShopWithAdmin(page, "Loja Convites");

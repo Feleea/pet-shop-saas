@@ -6,6 +6,7 @@
 - [ ] Fase 3 — Serviços e agenda
   - [x] 3a — Catálogo de serviços
   - [x] 3a.2 — Equipe e convites de usuários
+  - [x] 3a.3 — Situação do usuário (ativo, inativo, férias)
   - [ ] 3b — Agenda (agendamentos sem conflito por profissional)
 - [ ] Fase 4 — PDV e estoque
 - [ ] Fase 5 — Dashboard
@@ -46,6 +47,15 @@
 - Só o ADMIN acessa `/equipe` (ação `users` em `src/lib/permissions.ts`).
 - `/convite/*` é público de propósito (quem recebe ainda não tem conta).
 
+## Decisões da Fase 3a.3 (situação do usuário)
+- Três situações: **Ativo**, **Inativo** e **Férias**. Inativo e Férias bloqueiam o login **e derrubam sessões já abertas**: a cada requisição `getSession()` confere a situação atual no banco (o token sozinho não saberia). O papel também passa a vir do banco.
+- **Férias** pede a quantidade de dias (1 a 365) e grava a **data prevista de retorno** (`vacationReturnsAt` = agora + n dias). Atualizar as férias recalcula a data a partir de agora.
+- **Reativação automática: NÃO implementada (fica para outro momento).** Hoje o ADMIN reativa manualmente. O campo `vacationReturnsAt` e o índice `(status, vacationReturnsAt)` já estão prontos: a futura rotina deve reativar quem tem `status = VACATION` e `vacationReturnsAt <= agora`.
+- No login, a mensagem de conta suspensa só aparece **depois de a senha estar correta**; senha errada continua "Credenciais inválidas".
+- Travas: o ADMIN não altera a própria situação nem a de outro ADMIN (evita ficar sem ninguém com acesso). O repositório também filtra `role != ADMIN` como segunda proteção.
+- Usuários continuam sem ser excluídos: o histórico (clientes, agenda) fica preservado.
+
 ## Pendências conhecidas da gestão de equipe
-- **Remover ou desativar usuário** (ex.: funcionário que saiu): ainda não existe, e hoje a sessão (7 dias) seria o único limite.
-- Trocar papel de um usuário, reenviar convite e recuperação de senha.
+- **Reativação automática ao fim das férias** (rotina agendada).
+- Trocar o papel de um usuário, reenviar convite e recuperação de senha.
+- A checagem de situação faz uma consulta por requisição; se virar gargalo, trocar por cache curto.
