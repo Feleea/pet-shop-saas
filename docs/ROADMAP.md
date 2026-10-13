@@ -4,6 +4,8 @@
 - [x] Fase 1 — Auth + multi-tenancy
 - [x] Fase 2 — Clientes e pets
 - [ ] Fase 3 — Serviços e agenda
+  - [x] 3a — Catálogo de serviços
+  - [ ] 3b — Agenda (agendamentos sem conflito por profissional)
 - [ ] Fase 4 — PDV e estoque
 - [ ] Fase 5 — Dashboard
 - [ ] Fase 6 — Cobrança do SaaS (planos)
@@ -25,3 +27,11 @@
 - Telefone é guardado só com dígitos; a data de nascimento é uma data (sem hora) em UTC.
 - Limpar um campo opcional na edição grava `null` (não mantém o valor antigo).
 - A busca por nome ignora maiúsculas/minúsculas, mas ainda diferencia acentos ("jose" não acha "José").
+
+## Decisões da Fase 3a (catálogo de serviços)
+- Só o ADMIN gerencia o catálogo (preços são sensíveis); todos os papéis consultam os serviços **ativos**.
+- Serviços são **desativados, não excluídos**, porque a agenda vai referenciá-los. O nome de um serviço desativado continua reservado.
+- Nome único por pet shop, **sem diferenciar maiúsculas** (pré-checagem no serviço + índice único do banco como rede de segurança).
+- Preço em **centavos** (inteiro); aceita "50", "50,5", "50.50", "R$ 1.250,50". Preço zero é permitido (serviço gratuito); máximo R$ 99.999,99.
+- Duração em minutos, de 5 a 480, **múltipla de 5** — já pensando na grade de horários da agenda.
+- Foi adicionado `@@unique([id, tenantId])` em `Service` para a futura chave estrangeira composta dos agendamentos.

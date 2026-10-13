@@ -12,3 +12,11 @@ export class NotFoundError extends Error {
     this.name = "NotFoundError";
   }
 }
+
+/** Violação de unicidade (ex.: nome de serviço repetido dentro do mesmo pet shop). */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
+}

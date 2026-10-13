@@ -23,8 +23,9 @@ export default async function PainelPage() {
         Olá, <strong data-testid="user-name">{user.name}</strong> ({user.role}) · código do pet shop:{" "}
         <code data-testid="tenant-slug">{tenant.slug}</code>
       </p>
-      <nav style={{ margin: "1rem 0" }}>
+      <nav style={{ margin: "1rem 0", display: "flex", gap: "1rem" }}>
         <Link href="/clientes">Clientes e pets</Link>
+        <Link href="/servicos">Serviços</Link>
       </nav>
       <form action={logoutAction}>
         <button type="submit">Sair</button>

@@ -35,6 +35,7 @@ model Tenant {
   createdAt DateTime   @default(now())
   users     User[]
   customers Customer[]
+  services  Service[]
 }
 
 model User {
@@ -86,4 +87,24 @@ model Pet {
 
   @@index([tenantId])
   @@index([customerId])
+}
+
+// Catálogo de serviços do pet shop (banho, tosa, consulta...).
+// Serviços são DESATIVADOS, não excluídos: a agenda (próxima etapa) vai referenciá-los.
+model Service {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  name            String
+  description     String?
+  durationMinutes Int
+  priceCents      Int
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  // permite a chave estrangeira composta da futura tabela de agendamentos
+  @@unique([id, tenantId])
+  @@index([tenantId, active])
 }

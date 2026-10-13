@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import type { ClientFormState } from "./actions";
+import type { ServiceFormState } from "./actions";
 
-type Action = (prev: ClientFormState, formData: FormData) => Promise<ClientFormState>;
+type Action = (prev: ServiceFormState, formData: FormData) => Promise<ServiceFormState>;
 
 const field = { display: "block", width: "100%" } as const;
 
-export function CustomerForm({
+export function ServiceForm({
   action,
   submitLabel,
   defaults = {},
@@ -21,27 +21,26 @@ export function CustomerForm({
   return (
     <form action={formAction} style={{ display: "grid", gap: "0.75rem" }}>
       <label>
-        Nome do cliente
+        Nome do serviço
         <input name="name" required defaultValue={v("name")} style={field} />
       </label>
       <label>
-        Telefone
-        <input name="phone" type="tel" defaultValue={v("phone")} style={field} />
+        Descrição
+        <textarea name="description" rows={2} defaultValue={v("description")} style={field} />
       </label>
       <label>
-        E-mail
-        <input name="email" defaultValue={v("email")} style={field} />
+        Duração (minutos)
+        <input name="durationMinutes" inputMode="numeric" required defaultValue={v("durationMinutes")} style={field} />
       </label>
       <label>
-        Observações do cliente
-        <textarea name="notes" rows={3} defaultValue={v("notes")} style={field} />
+        Preço (R$)
+        <input name="price" inputMode="decimal" required defaultValue={v("price")} style={field} />
       </label>
       {state.error && (
         <p role="alert" style={{ color: "crimson" }}>
           {state.error}
         </p>
       )}
-      {state.saved && <p role="status">Dados salvos.</p>}
       <button type="submit" disabled={pending}>
         {pending ? "Salvando..." : submitLabel}
       </button>

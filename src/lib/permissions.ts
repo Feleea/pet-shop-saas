@@ -1,10 +1,11 @@
 import type { Role } from "./session";
 import { ForbiddenError } from "./tenant";
 
-export type Action = "read" | "write" | "delete";
+/** "catalog" = gerenciar serviços e preços (só ADMIN). Todos os papéis LEEM o catálogo. */
+export type Action = "read" | "write" | "delete" | "catalog";
 
 const MATRIX: Record<Role, Action[]> = {
-  ADMIN: ["read", "write", "delete"],
+  ADMIN: ["read", "write", "delete", "catalog"],
   ATTENDANT: ["read", "write"],
   GROOMER: ["read"],
   VET: ["read"],
