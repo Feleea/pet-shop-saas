@@ -22,6 +22,13 @@ enum UserStatus {
   VACATION
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
 enum Species {
   DOG
   CAT
@@ -60,7 +67,10 @@ model User {
   status            UserStatus @default(ACTIVE)
   vacationReturnsAt DateTime?
   statusChangedAt   DateTime   @default(now())
+  appointments      Appointment[] @relation("AppointmentProfessional")
 
+  // permite a chave estrangeira composta de Appointment (profissional + tenant)
+  @@unique([id, tenantId])
   @@unique([tenantId, email])
   @@index([tenantId])
   // apoia a futura rotina que reativa quem está de férias (status = VACATION e vacationReturnsAt <= agora)
@@ -79,6 +89,7 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   pets      Pet[]
+  appointments Appointment[]
 
   // permite a chave estrangeira composta de Pet (id + tenantId)
   @@unique([id, tenantId])
@@ -99,9 +110,12 @@ model Pet {
   notes      String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  appointments Appointment[]
 
   @@index([tenantId])
   @@index([customerId])
+  // permite a chave estrangeira composta de Appointment (pet + cliente)
+  @@unique([id, customerId])
 }
 
 // Catálogo de serviços do pet shop (banho, tosa, consulta...).
@@ -117,6 +131,7 @@ model Service {
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  appointments    Appointment[]
 
   @@unique([tenantId, name])
   // permite a chave estrangeira composta da futura tabela de agendamentos
@@ -139,4 +154,36 @@ model Invite {
   createdAt  DateTime  @default(now())
 
   @@index([tenantId, email])
+}
+
+// Agendamento. As chaves estrangeiras COMPOSTAS fazem o próprio banco garantir que cliente, pet, serviço
+// e profissional pertencem ao mesmo pet shop (e que o pet é do cliente). Nome, duração e preço do serviço
+// são copiados (snapshot): mudar o catálogo depois não altera agendamentos já feitos.
+// Conflitos de horário são checados na criação/reagendamento, dentro de uma transação com trava (advisory lock).
+model Appointment {
+  id             String @id @default(cuid())
+  tenantId       String
+  customerId     String
+  petId          String
+  serviceId      String
+  professionalId String
+
+  customer     Customer @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  pet          Pet      @relation(fields: [petId, customerId], references: [id, customerId], onDelete: Restrict)
+  service      Service  @relation(fields: [serviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  professional User     @relation("AppointmentProfessional", fields: [professionalId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  startsAt        DateTime
+  endsAt          DateTime
+  serviceName     String
+  durationMinutes Int
+  priceCents      Int
+  status          AppointmentStatus @default(SCHEDULED)
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([tenantId, startsAt])
+  @@index([professionalId, startsAt])
+  @@index([petId, startsAt])
 }

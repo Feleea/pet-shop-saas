@@ -3,11 +3,11 @@
 - [x] Fase 0 — Setup (Next.js, Prisma, testes, CI)
 - [x] Fase 1 — Auth + multi-tenancy
 - [x] Fase 2 — Clientes e pets
-- [ ] Fase 3 — Serviços e agenda
+- [x] Fase 3 — Serviços e agenda
   - [x] 3a — Catálogo de serviços
   - [x] 3a.2 — Equipe e convites de usuários
   - [x] 3a.3 — Situação do usuário (ativo, inativo, férias)
-  - [ ] 3b — Agenda (agendamentos sem conflito por profissional)
+  - [x] 3b — Agenda (agendamentos sem conflito por profissional)
 - [ ] Fase 4 — PDV e estoque
 - [ ] Fase 5 — Dashboard
 - [ ] Fase 6 — Cobrança do SaaS (planos)
@@ -54,6 +54,26 @@
 - No login, a mensagem de conta suspensa só aparece **depois de a senha estar correta**; senha errada continua "Credenciais inválidas".
 - Travas: o ADMIN não altera a própria situação nem a de outro ADMIN (evita ficar sem ninguém com acesso). O repositório também filtra `role != ADMIN` como segunda proteção.
 - Usuários continuam sem ser excluídos: o histórico (clientes, agenda) fica preservado.
+
+## Decisões da Fase 3b (agenda)
+- **Conflito**: o mesmo profissional **ou o mesmo pet** não podem ter dois agendamentos sobrepostos. Encostar nas pontas (um termina quando o outro começa) é permitido. Só **Agendado** e **Concluído** ocupam o horário; **Cancelado** e **Faltou** liberam.
+- **Atomicidade**: checar o conflito e gravar acontece na **mesma transação, com trava (advisory lock)** por profissional e por pet. Duas pessoas agendando ao mesmo tempo não furam a regra. Reforço futuro possível: *exclusion constraint* do PostgreSQL.
+- **Integridade no banco**: chaves estrangeiras compostas garantem que cliente, pet, serviço e profissional são do mesmo pet shop e que o pet é do cliente.
+- **Snapshot**: nome, duração e preço do serviço são copiados para o agendamento; mudar o catálogo depois não altera o que já foi marcado. Reagendar mantém a duração original.
+- **Duração e horários**: o fim é início + duração do serviço; o início precisa ser múltiplo de 5 minutos e **não pode estar no passado** (agendar exatamente "agora" é permitido).
+- **Fuso**: horário de Brasília para todos os pet shops (`SHOP_TIMEZONE`). Fuso por pet shop fica para depois. A conversão trata horário de verão (testada com Nova York).
+- **Profissional**: usuário **ativo** com papel Administrador, Tosador ou Veterinário. Atendente não executa serviços.
+- **Permissões**: ADMIN e ATTENDANT agendam, reagendam, cancelam e marcam falta. O **profissional do agendamento** pode concluí-lo. Todos os papéis consultam a agenda.
+- **Falta** só pode ser marcada **depois** do horário do agendamento. Situações finais (Concluído, Cancelado, Faltou) não mudam mais.
+- **Histórico**: cliente ou pet com agendamentos (mesmo cancelados) **não podem ser excluídos** (FK com Restrict); a tela explica o motivo.
+- Agendamentos que atravessam a meia-noite aparecem no dia em que **começam**.
+
+## Pendências conhecidas da agenda
+- Visualização semanal/por profissional em colunas e horários livres sugeridos.
+- Horário de funcionamento do pet shop e folgas (hoje qualquer horário múltiplo de 5 é aceito).
+- O que fazer com agendamentos futuros de um profissional que foi desativado ou saiu de férias (hoje continuam na agenda e podem ser reagendados).
+- Lembretes ao cliente (WhatsApp/e-mail) e fuso horário por pet shop.
+- Seleção de cliente com busca (hoje é uma lista simples).
 
 ## Pendências conhecidas da gestão de equipe
 - **Reativação automática ao fim das férias** (rotina agendada).
