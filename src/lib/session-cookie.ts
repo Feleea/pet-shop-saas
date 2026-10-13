@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, signSession, verifySession, type SessionPayload } from "./session";
 
@@ -18,4 +19,11 @@ export async function clearSessionCookie(): Promise<void> {
 
 export async function getSession(): Promise<SessionPayload | null> {
   return verifySession((await cookies()).get(SESSION_COOKIE)?.value);
+}
+
+/** Para páginas e actions que exigem login: sem sessão válida, vai para /login. */
+export async function requireSession(): Promise<SessionPayload> {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  return session;
 }

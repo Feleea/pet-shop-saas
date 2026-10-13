@@ -1,16 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-
-const unique = () => `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-async function registerShop(page: Page, shopName: string, adminName: string, email: string, password: string) {
-  await page.goto("/cadastro");
-  await page.getByLabel("Nome do pet shop").fill(shopName);
-  await page.getByLabel("Seu nome").fill(adminName);
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
-  await page.getByRole("button", { name: "Criar conta" }).click();
-  await expect(page).toHaveURL(/\/painel$/);
-}
+import { expect, test } from "@playwright/test";
+import { registerShop, unique } from "./helpers";
 
 test("cadastro cria o pet shop e leva ao painel", async ({ page }) => {
   const shop = `Au Au ${unique()}`;

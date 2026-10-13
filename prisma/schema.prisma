@@ -14,13 +14,27 @@ enum Role {
   VET
 }
 
+enum Species {
+  DOG
+  CAT
+  BIRD
+  OTHER
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 // Cada pet shop é um Tenant. Toda tabela de negócio carrega tenantId.
 model Tenant {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
+  slug      String     @unique
+  createdAt DateTime   @default(now())
   users     User[]
+  customers Customer[]
 }
 
 model User {
@@ -35,4 +49,41 @@ model User {
 
   @@unique([tenantId, email])
   @@index([tenantId])
+}
+
+// Tutor / cliente do pet shop
+model Customer {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  phone     String?
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pets      Pet[]
+
+  // permite a chave estrangeira composta de Pet (id + tenantId)
+  @@unique([id, tenantId])
+  @@index([tenantId, name])
+}
+
+model Pet {
+  id         String    @id @default(cuid())
+  tenantId   String
+  customerId String
+  // FK composta: o banco GARANTE que o pet pertence ao mesmo tenant do cliente.
+  customer   Customer  @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  name       String
+  species    Species
+  breed      String?
+  size       PetSize?
+  birthDate  DateTime? @db.Date
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([customerId])
 }

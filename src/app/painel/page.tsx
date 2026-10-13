@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session-cookie";
@@ -22,6 +23,9 @@ export default async function PainelPage() {
         Olá, <strong data-testid="user-name">{user.name}</strong> ({user.role}) · código do pet shop:{" "}
         <code data-testid="tenant-slug">{tenant.slug}</code>
       </p>
+      <nav style={{ margin: "1rem 0" }}>
+        <Link href="/clientes">Clientes e pets</Link>
+      </nav>
       <form action={logoutAction}>
         <button type="submit">Sair</button>
       </form>
