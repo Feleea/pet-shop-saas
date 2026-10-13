@@ -20,3 +20,11 @@ export class ConflictError extends Error {
     this.name = "ConflictError";
   }
 }
+
+/** Convite inexistente, expirado ou já usado: a mensagem é a mesma para os três casos, de propósito. */
+export class InvalidInviteError extends Error {
+  constructor() {
+    super("Convite inválido ou expirado");
+    this.name = "InvalidInviteError";
+  }
+}

@@ -5,6 +5,7 @@
 - [x] Fase 2 — Clientes e pets
 - [ ] Fase 3 — Serviços e agenda
   - [x] 3a — Catálogo de serviços
+  - [x] 3a.2 — Equipe e convites de usuários
   - [ ] 3b — Agenda (agendamentos sem conflito por profissional)
 - [ ] Fase 4 — PDV e estoque
 - [ ] Fase 5 — Dashboard
@@ -35,3 +36,16 @@
 - Preço em **centavos** (inteiro); aceita "50", "50,5", "50.50", "R$ 1.250,50". Preço zero é permitido (serviço gratuito); máximo R$ 99.999,99.
 - Duração em minutos, de 5 a 480, **múltipla de 5** — já pensando na grade de horários da agenda.
 - Foi adicionado `@@unique([id, tenantId])` em `Service` para a futura chave estrangeira composta dos agendamentos.
+
+## Decisões da Fase 3a.2 (equipe e convites)
+- **Convite por link**, sem e-mail automático (ainda não há serviço de e-mail): o ADMIN copia o link e envia por onde preferir. Quem recebe define a **própria senha**; o ADMIN nunca a conhece.
+- O banco guarda só o **hash (SHA-256)** do token; o link completo aparece **uma única vez**. Se o link se perder, revogue e gere outro.
+- O convite vale **7 dias** e só pode ser usado **uma vez** (a aceitação é atômica: marca o convite e cria o usuário na mesma transação).
+- Link inexistente, expirado, revogado ou usado mostram a **mesma mensagem** ("Convite inválido ou expirado").
+- ADMIN **não é convidável**: por ora o dono que criou o pet shop é o único administrador.
+- Só o ADMIN acessa `/equipe` (ação `users` em `src/lib/permissions.ts`).
+- `/convite/*` é público de propósito (quem recebe ainda não tem conta).
+
+## Pendências conhecidas da gestão de equipe
+- **Remover ou desativar usuário** (ex.: funcionário que saiu): ainda não existe, e hoje a sessão (7 dias) seria o único limite.
+- Trocar papel de um usuário, reenviar convite e recuperação de senha.

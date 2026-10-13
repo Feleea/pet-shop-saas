@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { can } from "@/lib/permissions";
 import { getSession } from "@/lib/session-cookie";
 import { logoutAction } from "../actions";
 
@@ -26,6 +27,7 @@ export default async function PainelPage() {
       <nav style={{ margin: "1rem 0", display: "flex", gap: "1rem" }}>
         <Link href="/clientes">Clientes e pets</Link>
         <Link href="/servicos">Serviços</Link>
+        {can(session.role, "users") && <Link href="/equipe">Equipe</Link>}
       </nav>
       <form action={logoutAction}>
         <button type="submit">Sair</button>

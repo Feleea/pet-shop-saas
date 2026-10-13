@@ -1,11 +1,14 @@
 import type { Role } from "./session";
 import { ForbiddenError } from "./tenant";
 
-/** "catalog" = gerenciar serviços e preços (só ADMIN). Todos os papéis LEEM o catálogo. */
-export type Action = "read" | "write" | "delete" | "catalog";
+/**
+ * "catalog" = gerenciar serviços e preços; "users" = convidar e gerenciar a equipe.
+ * Os dois são só do ADMIN. Todos os papéis LEEM o catálogo.
+ */
+export type Action = "read" | "write" | "delete" | "catalog" | "users";
 
 const MATRIX: Record<Role, Action[]> = {
-  ADMIN: ["read", "write", "delete", "catalog"],
+  ADMIN: ["read", "write", "delete", "catalog", "users"],
   ATTENDANT: ["read", "write"],
   GROOMER: ["read"],
   VET: ["read"],

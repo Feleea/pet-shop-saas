@@ -36,6 +36,7 @@ model Tenant {
   users     User[]
   customers Customer[]
   services  Service[]
+  invites   Invite[]
 }
 
 model User {
@@ -107,4 +108,21 @@ model Service {
   // permite a chave estrangeira composta da futura tabela de agendamentos
   @@unique([id, tenantId])
   @@index([tenantId, active])
+}
+
+// Convite para um novo usuário entrar num pet shop. Guardamos só o HASH do token:
+// o link completo é exibido uma única vez, para quem convidou.
+model Invite {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  name       String
+  email      String
+  role       Role
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, email])
 }
