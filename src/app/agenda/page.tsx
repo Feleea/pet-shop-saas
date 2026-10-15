@@ -27,6 +27,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
   }
   const professionals = await listProfessionals(prismaAgendaRepo, session);
   const canWrite = can(session.role, "write");
+  const canSell = can(session.role, "sell");
 
   const link = (d: string) => `/agenda?data=${d}${profissional ? `&profissional=${profissional}` : ""}`;
   const today = localDateString(new Date());
@@ -109,6 +110,8 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
                       canManage={canWrite}
                       canComplete={canWrite || a.professionalId === session.userId}
                     />
+                  ) : a.status === "COMPLETED" && canSell ? (
+                    <Link href={`/pdv?atendimento=${a.id}`}>Cobrar</Link>
                   ) : null}
                 </td>
               </tr>

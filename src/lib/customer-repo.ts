@@ -4,7 +4,7 @@ import { ConflictError } from "./errors";
 import type { CustomerRepo } from "./customer-service";
 import { withTenant } from "./tenant";
 
-export const HAS_APPOINTMENTS_MESSAGE = "Este cadastro possui agendamentos e não pode ser excluído";
+export const HAS_APPOINTMENTS_MESSAGE = "Este cadastro possui agendamentos ou vendas e não pode ser excluído";
 
 // Agendamentos (mesmo cancelados) ficam no histórico e travam a exclusão (FK com Restrict).
 async function mapHasAppointments<T>(fn: () => Promise<T>): Promise<T> {

@@ -38,7 +38,7 @@ export default async function ClienteDetalhePage({
       <h1>{customer.name}</h1>
       {erro === "agendamentos" && (
         <p role="alert" style={{ color: "crimson" }}>
-          Não é possível excluir: há agendamentos (mesmo cancelados ou concluídos) vinculados a este cadastro, que ficam guardados no histórico.
+          Não é possível excluir: há agendamentos ou vendas (mesmo cancelados ou concluídos) vinculados a este cadastro, que ficam guardados no histórico.
         </p>
       )}
       {canWrite && (

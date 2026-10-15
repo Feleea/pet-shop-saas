@@ -28,6 +28,8 @@ export default async function PainelPage() {
         <Link href="/clientes">Clientes e pets</Link>
         <Link href="/servicos">Serviços</Link>
         <Link href="/agenda">Agenda</Link>
+        {can(session.role, "sell") && <Link href="/pdv">PDV</Link>}
+        <Link href="/estoque">Estoque</Link>
         {can(session.role, "users") && <Link href="/equipe">Equipe</Link>}
       </nav>
       <form action={logoutAction}>

@@ -1,0 +1,283 @@
+import type { Prisma } from "@prisma/client";
+import { db } from "./db";
+import type {
+  AppointmentForSale,
+  CancelSaleResult,
+  CreateSaleFailure,
+  CreateSaleResult,
+  SaleDetail,
+  SaleRecord,
+  SalesRepo,
+} from "./sales-service";
+import { withTenant } from "./tenant";
+
+/** Lançada dentro da transação para DESFAZER tudo (um `return` comitaria o que já foi feito). */
+class SaleAbort extends Error {
+  constructor(public failure: CreateSaleFailure) {
+    super("abort");
+  }
+}
+class CancelAbort extends Error {
+  constructor(public reason: "NOT_FOUND" | "ALREADY_CANCELED") {
+    super("abort");
+  }
+}
+
+async function lock(tx: Prisma.TransactionClient, keys: string[]) {
+  for (const key of [...keys].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
+
+const saleSelect = {
+  id: true,
+  tenantId: true,
+  number: true,
+  status: true,
+  customerId: true,
+  paymentMethod: true,
+  subtotalCents: true,
+  discountCents: true,
+  totalCents: true,
+  notes: true,
+  createdAt: true,
+  createdById: true,
+  canceledAt: true,
+  cancelReason: true,
+  customer: { select: { name: true } },
+  createdBy: { select: { name: true } },
+  _count: { select: { items: true } },
+} as const;
+
+const detailSelect = {
+  ...saleSelect,
+  items: {
+    select: {
+      id: true,
+      kind: true,
+      productId: true,
+      appointmentId: true,
+      description: true,
+      unitPriceCents: true,
+      quantity: true,
+      totalCents: true,
+    },
+    orderBy: { position: "asc" },
+  },
+} as const;
+
+function toRecord(row: Prisma.SaleGetPayload<{ select: typeof saleSelect }>): SaleRecord {
+  const { customer, createdBy, _count, ...rest } = row;
+  return { ...rest, customerName: customer?.name ?? null, createdByName: createdBy.name, itemCount: _count.items };
+}
+function toDetail(row: Prisma.SaleGetPayload<{ select: typeof detailSelect }>): SaleDetail {
+  const { items, ...rest } = row;
+  return { ...toRecord(rest), items };
+}
+
+const appointmentSelect = {
+  id: true,
+  customerId: true,
+  serviceName: true,
+  priceCents: true,
+  startsAt: true,
+  status: true,
+  customer: { select: { name: true } },
+  pet: { select: { name: true } },
+  saleItems: { where: { sale: { status: "COMPLETED" as const } }, select: { id: true } },
+} as const;
+
+function toAppointment(row: Prisma.AppointmentGetPayload<{ select: typeof appointmentSelect }>): AppointmentForSale {
+  const { customer, pet, saleItems, ...rest } = row;
+  return { ...rest, customerName: customer.name, petName: pet.name, billed: saleItems.length > 0 };
+}
+
+// REGRA: todo `where` passa por withTenant().
+export const prismaSalesRepo: SalesRepo = {
+  findProductsForSale: (tenantId, ids) =>
+    db.product.findMany({
+      where: withTenant({ tenantId }, { id: { in: ids } }),
+      select: { id: true, name: true, priceCents: true, active: true },
+    }),
+
+  async findAppointmentsForSale(tenantId, ids) {
+    const rows = await db.appointment.findMany({ where: withTenant({ tenantId }, { id: { in: ids } }), select: appointmentSelect });
+    return rows.map(toAppointment);
+  },
+
+  async listBillableAppointments(tenantId) {
+    const rows = await db.appointment.findMany({
+      where: withTenant({ tenantId }, {
+        status: "COMPLETED" as const,
+        saleItems: { none: { sale: { status: "COMPLETED" as const } } },
+      }),
+      select: appointmentSelect,
+      orderBy: { startsAt: "desc" },
+      take: 100,
+    });
+    return rows.map(toAppointment);
+  },
+
+  async customerExists(tenantId, id) {
+    return (await db.customer.count({ where: withTenant({ tenantId }, { id }) })) > 0;
+  },
+
+  async createSaleAtomic(tenantId, sale): Promise<CreateSaleResult> {
+    const appointmentItems = sale.items.filter((i) => i.kind === "APPOINTMENT");
+    // Ordem fixa por produto evita deadlock entre duas vendas simultâneas com os mesmos produtos.
+    const productItems = sale.items.filter((i) => i.kind === "PRODUCT").sort((a, b) => a.productId!.localeCompare(b.productId!));
+
+    try {
+      return await db.$transaction(async (tx) => {
+        // 1) Atendimentos: trava, confere que continua concluído, com o mesmo preço e sem outra venda ativa.
+        await lock(tx, appointmentItems.map((i) => `appt:${tenantId}:${i.appointmentId}`));
+        for (const it of appointmentItems) {
+          const appt = await tx.appointment.findFirst({
+            where: withTenant({ tenantId }, { id: it.appointmentId! }),
+            select: { status: true, priceCents: true },
+          });
+          const billed = appt
+            ? await tx.saleItem.count({
+                where: withTenant({ tenantId }, { appointmentId: it.appointmentId!, sale: { status: "COMPLETED" as const } }),
+              })
+            : 0;
+          if (!appt || appt.status !== "COMPLETED" || appt.priceCents !== it.unitPriceCents || billed > 0) {
+            throw new SaleAbort({ reason: "APPOINTMENT_UNAVAILABLE", description: it.description });
+          }
+        }
+
+        // 2) Estoque: ativo + mesmo preço + saldo suficiente, tudo na condição do UPDATE (atômico).
+        for (const it of productItems) {
+          const r = await tx.product.updateMany({
+            where: withTenant({ tenantId }, {
+              id: it.productId!,
+              active: true,
+              priceCents: it.unitPriceCents,
+              stockQuantity: { gte: it.quantity },
+            }),
+            data: { stockQuantity: { decrement: it.quantity } },
+          });
+          if (r.count === 0) {
+            const p = await tx.product.findFirst({
+              where: withTenant({ tenantId }, { id: it.productId! }),
+              select: { name: true, active: true, priceCents: true, stockQuantity: true },
+            });
+            if (!p || !p.active) throw new SaleAbort({ reason: "PRODUCT_UNAVAILABLE", productName: p?.name ?? it.description });
+            if (p.priceCents !== it.unitPriceCents) throw new SaleAbort({ reason: "PRODUCT_CHANGED", productName: p.name });
+            throw new SaleAbort({ reason: "INSUFFICIENT_STOCK", productName: p.name, available: p.stockQuantity });
+          }
+        }
+
+        // 3) Numeração, venda, itens e movimentações de estoque.
+        const { saleSeq } = await tx.tenant.update({
+          where: { id: tenantId },
+          data: { saleSeq: { increment: 1 } },
+          select: { saleSeq: true },
+        });
+        const created = await tx.sale.create({
+          data: {
+            tenantId,
+            number: saleSeq,
+            customerId: sale.customerId,
+            paymentMethod: sale.paymentMethod,
+            subtotalCents: sale.subtotalCents,
+            discountCents: sale.discountCents,
+            totalCents: sale.totalCents,
+            notes: sale.notes,
+            createdById: sale.userId,
+          },
+          select: { id: true },
+        });
+        await tx.saleItem.createMany({
+          data: sale.items.map((it, position) => ({
+            tenantId,
+            saleId: created.id,
+            position,
+            kind: it.kind,
+            productId: it.productId,
+            appointmentId: it.appointmentId,
+            description: it.description,
+            unitPriceCents: it.unitPriceCents,
+            quantity: it.quantity,
+            totalCents: it.totalCents,
+          })),
+        });
+        if (productItems.length > 0) {
+          await tx.stockMovement.createMany({
+            data: productItems.map((it) => ({
+              tenantId,
+              productId: it.productId!,
+              type: "SALE" as const,
+              quantity: -it.quantity,
+              note: `Venda #${saleSeq}`,
+              saleId: created.id,
+              createdById: sale.userId,
+            })),
+          });
+        }
+        const detail = await tx.sale.findFirstOrThrow({ where: withTenant({ tenantId }, { id: created.id }), select: detailSelect });
+        return { ok: true, sale: toDetail(detail) } as const;
+      });
+    } catch (e) {
+      if (e instanceof SaleAbort) return { ok: false, ...e.failure };
+      throw e;
+    }
+  },
+
+  async cancelSaleAtomic(tenantId, id, { userId, reason, now }): Promise<CancelSaleResult> {
+    try {
+      return await db.$transaction(async (tx) => {
+        // O WHERE com status COMPLETED garante que só UM cancelamento vence, mesmo com cliques simultâneos.
+        const r = await tx.sale.updateMany({
+          where: withTenant({ tenantId }, { id, status: "COMPLETED" as const }),
+          data: { status: "CANCELED", canceledAt: now, canceledById: userId, cancelReason: reason },
+        });
+        if (r.count === 0) {
+          const exists = await tx.sale.count({ where: withTenant({ tenantId }, { id }) });
+          throw new CancelAbort(exists > 0 ? "ALREADY_CANCELED" : "NOT_FOUND");
+        }
+        const sale = await tx.sale.findFirstOrThrow({ where: withTenant({ tenantId }, { id }), select: { number: true } });
+        const items = await tx.saleItem.findMany({
+          where: withTenant({ tenantId }, { saleId: id, kind: "PRODUCT" as const }),
+          select: { productId: true, quantity: true },
+        });
+        for (const it of items) {
+          await tx.product.updateMany({
+            where: withTenant({ tenantId }, { id: it.productId! }),
+            data: { stockQuantity: { increment: it.quantity } },
+          });
+        }
+        if (items.length > 0) {
+          await tx.stockMovement.createMany({
+            data: items.map((it) => ({
+              tenantId,
+              productId: it.productId!,
+              type: "RETURN" as const,
+              quantity: it.quantity,
+              note: `Cancelamento da venda #${sale.number}`,
+              saleId: id,
+              createdById: userId,
+            })),
+          });
+        }
+        const detail = await tx.sale.findFirstOrThrow({ where: withTenant({ tenantId }, { id }), select: detailSelect });
+        return { ok: true, sale: toDetail(detail) } as const;
+      });
+    } catch (e) {
+      if (e instanceof CancelAbort) return { ok: false, reason: e.reason };
+      throw e;
+    }
+  },
+
+  async findSale(tenantId, id) {
+    const row = await db.sale.findFirst({ where: withTenant({ tenantId }, { id }), select: detailSelect });
+    return row ? toDetail(row) : null;
+  },
+
+  async listSales(tenantId, { from, to }) {
+    const rows = await db.sale.findMany({
+      where: withTenant({ tenantId }, { createdAt: { gte: from, lt: to } }),
+      select: saleSelect,
+      orderBy: { number: "desc" },
+    });
+    return rows.map(toRecord);
+  },
+};

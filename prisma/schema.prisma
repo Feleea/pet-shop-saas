@@ -52,6 +52,10 @@ model Tenant {
   customers Customer[]
   services  Service[]
   invites   Invite[]
+  products  Product[]
+  sales     Sale[]
+  // contador da numeração das vendas (1, 2, 3...) por pet shop; incrementado dentro da transação da venda
+  saleSeq   Int        @default(0)
 }
 
 model User {
@@ -68,6 +72,8 @@ model User {
   vacationReturnsAt DateTime?
   statusChangedAt   DateTime   @default(now())
   appointments      Appointment[] @relation("AppointmentProfessional")
+  salesCreated      Sale[]        @relation("SaleCreatedBy")
+  movementsCreated  StockMovement[] @relation("MovementCreatedBy")
 
   // permite a chave estrangeira composta de Appointment (profissional + tenant)
   @@unique([id, tenantId])
@@ -90,6 +96,7 @@ model Customer {
   updatedAt DateTime @updatedAt
   pets      Pet[]
   appointments Appointment[]
+  sales     Sale[]
 
   // permite a chave estrangeira composta de Pet (id + tenantId)
   @@unique([id, tenantId])
@@ -182,8 +189,128 @@ model Appointment {
   notes           String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  saleItems       SaleItem[]
 
+  // permite a chave estrangeira composta de SaleItem (atendimento + tenant)
+  @@unique([id, tenantId])
   @@index([tenantId, startsAt])
   @@index([professionalId, startsAt])
   @@index([petId, startsAt])
+}
+
+enum MovementType {
+  INITIAL
+  IN
+  SALE
+  RETURN
+  ADJUSTMENT
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  DEBIT
+  CREDIT
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELED
+}
+
+enum SaleItemKind {
+  PRODUCT
+  APPOINTMENT
+}
+
+// Produto à venda. stockQuantity é o saldo atual e só muda junto com um StockMovement, na mesma transação.
+// Produtos são DESATIVADOS, não excluídos: vendas e movimentações guardam o histórico.
+model Product {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  name          String
+  priceCents    Int
+  stockQuantity Int      @default(0)
+  minStock      Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  movements StockMovement[]
+  saleItems SaleItem[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId, active])
+}
+
+// Livro-razão do estoque: toda alteração de saldo deixa um registro (quem, quando, quanto, por quê).
+model StockMovement {
+  id          String       @id @default(cuid())
+  tenantId    String
+  productId   String
+  product     Product      @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  type        MovementType
+  // com sinal: positivo entra, negativo sai
+  quantity    Int
+  note        String?
+  saleId      String?
+  sale        Sale?        @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdById String
+  createdBy   User         @relation("MovementCreatedBy", fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdAt   DateTime     @default(now())
+
+  @@index([productId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model Sale {
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  number        Int
+  status        SaleStatus    @default(COMPLETED)
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  paymentMethod PaymentMethod
+  subtotalCents Int
+  discountCents Int           @default(0)
+  totalCents    Int
+  notes         String?
+  createdById   String
+  createdBy     User          @relation("SaleCreatedBy", fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdAt     DateTime      @default(now())
+  canceledAt    DateTime?
+  canceledById  String?
+  cancelReason  String?
+
+  items     SaleItem[]
+  movements StockMovement[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+}
+
+// Item de venda: produto OU atendimento concluído. Descrição e preço são copiados (snapshot).
+model SaleItem {
+  id              String       @id @default(cuid())
+  tenantId        String
+  saleId          String
+  sale            Sale         @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  position        Int
+  kind            SaleItemKind
+  productId       String?
+  product         Product?     @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  appointmentId   String?
+  appointment     Appointment? @relation(fields: [appointmentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  description     String
+  unitPriceCents  Int
+  quantity        Int
+  totalCents      Int
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([appointmentId])
 }

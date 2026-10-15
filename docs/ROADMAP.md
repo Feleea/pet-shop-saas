@@ -8,7 +8,7 @@
   - [x] 3a.2 — Equipe e convites de usuários
   - [x] 3a.3 — Situação do usuário (ativo, inativo, férias)
   - [x] 3b — Agenda (agendamentos sem conflito por profissional)
-- [ ] Fase 4 — PDV e estoque
+- [x] Fase 4 — PDV e estoque
 - [ ] Fase 5 — Dashboard
 - [ ] Fase 6 — Cobrança do SaaS (planos)
 
@@ -67,6 +67,31 @@
 - **Falta** só pode ser marcada **depois** do horário do agendamento. Situações finais (Concluído, Cancelado, Faltou) não mudam mais.
 - **Histórico**: cliente ou pet com agendamentos (mesmo cancelados) **não podem ser excluídos** (FK com Restrict); a tela explica o motivo.
 - Agendamentos que atravessam a meia-noite aparecem no dia em que **começam**.
+
+## Decisões da Fase 4 (estoque e PDV)
+**Estoque**
+- O saldo fica no produto e **toda alteração gera uma movimentação** (estoque inicial, entrada, venda, devolução, ajuste): quem, quando, quanto e por quê.
+- O saldo **nunca fica negativo**: a condição "saldo suficiente" está no próprio UPDATE do banco (atômico), então baixas simultâneas não passam do zero.
+- Produto é **desativado, não excluído** (vendas e movimentações guardam o histórico). Preço maior que zero; nome único por pet shop, sem diferenciar maiúsculas.
+- **Estoque baixo** = saldo ≤ mínimo; saldo zero = "Sem estoque". Produtos inativos não entram no alerta.
+- Permissões: `catalog` (ADMIN) cadastra, edita, ajusta e desativa; `stock` (ADMIN e ATTENDANT) registra entradas; todos os papéis consultam.
+
+**PDV**
+- Uma venda tem **produtos e/ou atendimentos concluídos**. O servidor **copia o preço do cadastro** (snapshot) e ignora qualquer preço vindo da tela; mudar o catálogo depois não altera vendas passadas.
+- **Tudo ou nada**: baixa de estoque, número da venda, itens e movimentações acontecem numa única transação. Se o preço mudou, o produto foi desativado ou o estoque acabou entre a tela e a confirmação, a venda é recusada (e nada é gravado).
+- Um **atendimento só é cobrado uma vez** enquanto houver venda concluída para ele (trava por atendimento); cancelar a venda o libera. Todos os atendimentos de uma venda são do mesmo cliente.
+- **Numeração** própria por pet shop (#1, #2, ...), por contador atualizado na mesma transação.
+- Desconto em **valor (R$)**, de 0 até o subtotal. Formas de pagamento: Dinheiro, Pix, Cartão de débito e Cartão de crédito. Limites: 1 a 9999 por item, 50 itens e R$ 999.999,99 por venda.
+- **Cancelar** (só ADMIN, com motivo) devolve o estoque, registra "Devolução" e só pode acontecer uma vez.
+- `sell` (ADMIN e ATTENDANT) usa o PDV e vê as vendas; **GROOMER e VET não veem as vendas** (dinheiro) mas consultam o estoque.
+- Cliente, pet e produto com vendas **não podem ser excluídos** (FK com Restrict). O resumo do dia usa o horário de Brasília.
+
+## Pendências conhecidas do PDV e do estoque
+- Venda de **serviço avulso** (sem agendamento) e **devolução/troca parcial** (hoje só o cancelamento total).
+- **Pagamento dividido** em mais de uma forma, troco e **abertura/fechamento de caixa**.
+- Comprovante para impressão e **nota fiscal** (NFC-e); relatórios por período, produto e vendedor.
+- Código de barras/SKU, preço de custo e margem, fornecedores, pedidos de compra, lote e validade.
+- Estoque negativo é bloqueado; se o pet shop precisar vender "sem saldo" (saldo ainda não lançado), será uma opção futura.
 
 ## Pendências conhecidas da agenda
 - Visualização semanal/por profissional em colunas e horários livres sugeridos.
