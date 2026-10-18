@@ -56,6 +56,19 @@ model Tenant {
   sales     Sale[]
   // contador da numeração das vendas (1, 2, 3...) por pet shop; incrementado dentro da transação da venda
   saleSeq   Int        @default(0)
+  returnSeq Int        @default(0)
+
+  // Dados da empresa (comprovante e nota fiscal). Tudo opcional até a pessoa preencher em Configurações.
+  legalName             String?
+  cnpj                  String?
+  stateRegistration     String?
+  municipalRegistration String?
+  taxRegime             TaxRegime?
+  addressLine           String?
+  city                  String?
+  state                 String?
+  zipCode               String?
+  phone                 String?
 }
 
 model User {
@@ -74,6 +87,8 @@ model User {
   appointments      Appointment[] @relation("AppointmentProfessional")
   salesCreated      Sale[]        @relation("SaleCreatedBy")
   movementsCreated  StockMovement[] @relation("MovementCreatedBy")
+  returnsCreated    SaleReturn[]    @relation("ReturnCreatedBy")
+  fiscalCreated     FiscalDocument[] @relation("FiscalCreatedBy")
 
   // permite a chave estrangeira composta de Appointment (profissional + tenant)
   @@unique([id, tenantId])
@@ -139,6 +154,10 @@ model Service {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   appointments    Appointment[]
+  saleItems       SaleItem[]
+  // Fiscal (NFS-e): item da LC 116 (ex.: 05.08) e alíquota do ISS em centésimos de ponto percentual (500 = 5,00%)
+  serviceCode     String?
+  issRateBp       Int?
 
   @@unique([tenantId, name])
   // permite a chave estrangeira composta da futura tabela de agendamentos
@@ -220,6 +239,7 @@ enum SaleStatus {
 
 enum SaleItemKind {
   PRODUCT
+  SERVICE
   APPOINTMENT
 }
 
@@ -234,6 +254,11 @@ model Product {
   stockQuantity Int      @default(0)
   minStock      Int      @default(0)
   active        Boolean  @default(true)
+  // Fiscal (NFC-e)
+  ncm           String?
+  cfop          String?
+  csosn         String?
+  unit          String   @default("UN")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -284,9 +309,17 @@ model Sale {
   canceledAt    DateTime?
   canceledById  String?
   cancelReason  String?
+  // troca: parte do valor coberta pelo crédito de uma devolução (o resto é pago na forma de pagamento da venda)
+  creditAppliedCents Int     @default(0)
+  // devoluções: valor das mercadorias devolvidas (com o desconto rateado) e dinheiro já devolvido
+  returnedValueCents Int     @default(0)
+  refundedCents      Int     @default(0)
+  exchangeOfReturnId String?
 
   items     SaleItem[]
   movements StockMovement[]
+  returns   SaleReturn[]
+  fiscalDocuments FiscalDocument[]
 
   @@unique([tenantId, number])
   @@unique([id, tenantId])
@@ -301,6 +334,8 @@ model SaleItem {
   sale            Sale         @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Restrict)
   position        Int
   kind            SaleItemKind
+  serviceId       String?
+  service         Service?     @relation(fields: [serviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
   productId       String?
   product         Product?     @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Restrict)
   appointmentId   String?
@@ -309,8 +344,110 @@ model SaleItem {
   unitPriceCents  Int
   quantity        Int
   totalCents      Int
+  // quanto já foi devolvido deste item (devolução parcial)
+  returnedQuantity Int         @default(0)
+  returnItems     SaleReturnItem[]
 
+  // permite a chave estrangeira composta de SaleReturnItem
+  @@unique([id, tenantId])
   @@index([saleId])
   @@index([productId])
   @@index([appointmentId])
+}
+
+enum TaxRegime {
+  MEI
+  SIMPLES_NACIONAL
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+}
+
+enum FiscalKind {
+  NFCE
+  NFSE
+}
+
+enum FiscalStatus {
+  PROCESSING
+  AUTHORIZED
+  REJECTED
+  CANCELED
+}
+
+// SIMULATED = provedor de teste: o documento NÃO tem validade fiscal.
+enum FiscalEnvironment {
+  SIMULATED
+  HOMOLOGATION
+  PRODUCTION
+}
+
+// Devolução (parcial ou total) de itens de uma venda concluída. Pode vir junto com uma troca:
+// nesse caso exchangeSaleId aponta para a nova venda e appliedCents é o crédito usado nela.
+model SaleReturn {
+  id             String         @id @default(cuid())
+  tenantId       String
+  number         Int
+  saleId         String
+  sale           Sale           @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  reason         String
+  // valor das mercadorias devolvidas (com o desconto da venda rateado)
+  valueCents     Int
+  appliedCents   Int            @default(0)
+  refundCents    Int
+  refundMethod   PaymentMethod?
+  restocked      Boolean
+  exchangeSaleId String?
+  createdById    String
+  createdBy      User           @relation("ReturnCreatedBy", fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdAt      DateTime       @default(now())
+  items          SaleReturnItem[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([saleId])
+  @@index([tenantId, createdAt])
+}
+
+model SaleReturnItem {
+  id         String     @id @default(cuid())
+  tenantId   String
+  returnId   String
+  saleReturn SaleReturn @relation(fields: [returnId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  saleItemId String
+  saleItem   SaleItem   @relation(fields: [saleItemId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  quantity   Int
+  valueCents Int
+  restocked  Boolean
+
+  @@index([returnId])
+  @@index([saleItemId])
+}
+
+// Nota fiscal de uma venda: NFC-e para os produtos e NFS-e para os serviços (documentos separados).
+// "request" guarda o que foi enviado ao provedor. Com o provedor SIMULADO não há validade fiscal.
+model FiscalDocument {
+  id              String            @id @default(cuid())
+  tenantId        String
+  saleId          String
+  sale            Sale              @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  kind            FiscalKind
+  status          FiscalStatus
+  environment     FiscalEnvironment
+  number          Int?
+  series          Int?
+  accessKey       String?
+  protocol        String?
+  providerRef     String?
+  totalCents      Int
+  rejectionReason String?
+  request         Json
+  issuedAt        DateTime?
+  canceledAt      DateTime?
+  cancelReason    String?
+  createdById     String
+  createdBy       User              @relation("FiscalCreatedBy", fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdAt       DateTime          @default(now())
+
+  @@index([saleId])
+  @@index([tenantId, kind, createdAt])
 }

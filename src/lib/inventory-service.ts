@@ -17,6 +17,11 @@ export interface ProductData {
   name: string;
   priceCents: number;
   minStock: number;
+  /** Fiscal (opcionais). `null` = não informado. */
+  ncm?: string | null;
+  cfop?: string | null;
+  csosn?: string | null;
+  unit?: string;
 }
 export interface ProductRecord extends ProductData {
   id: string;
@@ -67,6 +72,26 @@ export function stockLevel(p: Pick<ProductRecord, "stockQuantity" | "minStock">)
 /** Produto inativo não entra nos alertas: ninguém vai repor o que saiu de linha. */
 export const isLowStock = (p: ProductRecord) => p.active && stockLevel(p) !== "OK";
 
+function toProductData(d: {
+  name: string;
+  price: number;
+  minStock: number;
+  ncm?: string;
+  cfop?: string;
+  csosn?: string;
+  unit?: string;
+}): ProductData {
+  return {
+    name: d.name,
+    priceCents: d.price,
+    minStock: d.minStock,
+    ncm: d.ncm ?? null,
+    cfop: d.cfop ?? null,
+    csosn: d.csosn ?? null,
+    unit: d.unit ?? "UN",
+  };
+}
+
 function parse<T>(
   schema: { safeParse(raw: unknown): { success: true; data: T } | { success: false; error: { issues: { message: string }[] } } },
   raw: unknown,
@@ -82,7 +107,7 @@ export async function createProduct(repo: InventoryRepo, session: SessionPayload
   if (await repo.nameExists(session.tenantId, d.name)) throw new ConflictError(DUPLICATE_PRODUCT_MESSAGE);
   return repo.createProduct(
     session.tenantId,
-    { name: d.name, priceCents: d.price, minStock: d.minStock },
+    toProductData(d),
     { quantity: d.initialStock, userId: session.userId },
   );
 }
@@ -91,7 +116,7 @@ export async function updateProduct(repo: InventoryRepo, session: SessionPayload
   assertCan(session, "catalog");
   const d = parse(productUpdateSchema, raw);
   if (await repo.nameExists(session.tenantId, d.name, id)) throw new ConflictError(DUPLICATE_PRODUCT_MESSAGE);
-  const updated = await repo.updateProduct(session.tenantId, id, { name: d.name, priceCents: d.price, minStock: d.minStock });
+  const updated = await repo.updateProduct(session.tenantId, id, toProductData(d));
   if (!updated) throw new NotFoundError("Produto");
   return updated;
 }

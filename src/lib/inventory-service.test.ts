@@ -318,3 +318,37 @@ describe("permissões", () => {
     expect(calls).toEqual([]);
   });
 });
+
+describe("dados fiscais do produto (opcionais)", () => {
+  it("normaliza NCM, CFOP e CSOSN para só dígitos e a unidade para maiúsculas", async () => {
+    const { repo } = memoryRepo();
+    const p = await createProduct(repo, adminA, { ...shampoo, ncm: "3305.10.00", cfop: "5.102", csosn: "102", unit: "kg" });
+    expect(p).toMatchObject({ ncm: "33051000", cfop: "5102", csosn: "102", unit: "KG" });
+  });
+
+  it("sem dados fiscais: ficam nulos e a unidade padrão é UN (a nota só exige na hora de emitir)", async () => {
+    const { repo } = memoryRepo();
+    const p = await createProduct(repo, adminA, shampoo);
+    expect(p).toMatchObject({ ncm: null, cfop: null, csosn: null, unit: "UN" });
+  });
+
+  it.each([
+    [{ ncm: "123" }, "NCM inválido (8 dígitos)"],
+    [{ ncm: "123456789" }, "NCM inválido (8 dígitos)"],
+    [{ cfop: "12" }, "CFOP inválido (4 dígitos)"],
+    [{ csosn: "1" }, "CSOSN inválido (3 dígitos)"],
+    [{ unit: "quilograma" }, "Unidade inválida (ex.: UN, KG, PC)"],
+    [{ unit: "k g" }, "Unidade inválida (ex.: UN, KG, PC)"],
+  ])("rejeita %j", async (over, message) => {
+    const { repo, products } = memoryRepo();
+    await expect(createProduct(repo, adminA, { ...shampoo, ...over })).rejects.toThrow(new ValidationError(message));
+    expect(products).toHaveLength(0);
+  });
+
+  it("editar limpa os dados fiscais quando o campo fica vazio", async () => {
+    const { repo } = memoryRepo();
+    const p = await createProduct(repo, adminA, { ...shampoo, ncm: "33051000", cfop: "5102", csosn: "102" });
+    const u = await updateProduct(repo, adminA, p.id, { name: "Shampoo", price: "30", minStock: "5", ncm: "", cfop: "", csosn: "" });
+    expect(u).toMatchObject({ ncm: null, cfop: null, csosn: null });
+  });
+});

@@ -13,6 +13,11 @@ const itemSchema = z.discriminatedUnion(
       productId: id,
       quantity: intField({ min: 1, max: MAX_ITEM_QUANTITY, message: `Quantidade inválida (de 1 a ${MAX_ITEM_QUANTITY})` }),
     }),
+    z.object({
+      kind: z.literal("SERVICE"),
+      serviceId: id,
+      quantity: intField({ min: 1, max: MAX_ITEM_QUANTITY, message: `Quantidade inválida (de 1 a ${MAX_ITEM_QUANTITY})` }),
+    }),
     z.object({ kind: z.literal("APPOINTMENT"), appointmentId: id }),
   ],
   { errorMap: () => ({ message: BAD_ITEMS }) },

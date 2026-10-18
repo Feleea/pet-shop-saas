@@ -39,6 +39,25 @@ export function ProductForm({
           <input name="initialStock" inputMode="numeric" defaultValue={v("initialStock")} placeholder="0" style={field} />
         </label>
       )}
+      <fieldset style={{ display: "grid", gap: "0.5rem" }}>
+        <legend>Dados fiscais (opcionais: só são exigidos para emitir nota)</legend>
+        <label>
+          NCM
+          <input name="ncm" inputMode="numeric" defaultValue={v("ncm")} placeholder="8 dígitos" style={field} />
+        </label>
+        <label>
+          CFOP
+          <input name="cfop" inputMode="numeric" defaultValue={v("cfop")} placeholder="4 dígitos (ex.: 5102)" style={field} />
+        </label>
+        <label>
+          CSOSN
+          <input name="csosn" inputMode="numeric" defaultValue={v("csosn")} placeholder="3 dígitos (Simples/MEI)" style={field} />
+        </label>
+        <label>
+          Unidade
+          <input name="unit" defaultValue={v("unit")} placeholder="UN" style={field} />
+        </label>
+      </fieldset>
       {state.error && (
         <p role="alert" style={{ color: "crimson" }}>
           {state.error}

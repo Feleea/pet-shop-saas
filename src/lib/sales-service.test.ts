@@ -10,6 +10,7 @@ import {
   getSale,
   listBillableAppointments,
   listSales,
+  prepareSale,
   summarizeSales,
   type AppointmentForSale,
   type SaleDetail,
@@ -61,18 +62,30 @@ function world() {
     appt("aA4", "A", "cA1", "Carlos", "Thor", "Banho", 5000, "SCHEDULED"),
     appt("aB1", "B", "cB1", "Beto", "Bidu", "Banho", 6000),
   ];
+  const services = [
+    { id: "svA1", tenantId: "A", name: "Banho avulso", priceCents: 5000, active: true },
+    { id: "svA2", tenantId: "A", name: "Tosa avulsa", priceCents: 8000, active: false },
+    { id: "svB1", tenantId: "B", name: "Banho avulso", priceCents: 6000, active: true },
+  ];
   const sales: SaleDetail[] = [];
   const movements: { tenantId: string; productId: string; type: "SALE" | "RETURN"; quantity: number; note: string; saleId: string }[] = [];
   const seq: Record<string, number> = { A: 0, B: 0 };
   let ids = 0;
 
   const isBilled = (tenantId: string, appointmentId: string) =>
-    sales.some((s) => s.tenantId === tenantId && s.status === "COMPLETED" && s.items.some((i) => i.appointmentId === appointmentId));
+    sales.some((s) => s.tenantId === tenantId && s.status === "COMPLETED" && s.items.some((i) => i.appointmentId === appointmentId && i.returnedQuantity === 0));
   const forSale = ({ tenantId: _t, ...a }: (typeof appts)[number], billed: boolean): AppointmentForSale => ({ ...a, billed });
 
   const repo: SalesRepo = {
     async findProductsForSale(tenantId, productIds) {
       const r = products.filter((p) => p.tenantId === tenantId && productIds.includes(p.id)).map(({ id, name, priceCents, active }) => ({ id, name, priceCents, active }));
+      hooks.afterLookup?.();
+      return r;
+    },
+    async findServicesForSale(tenantId, serviceIds) {
+      const r = services
+        .filter((s) => s.tenantId === tenantId && serviceIds.includes(s.id))
+        .map(({ id, name, priceCents, active }) => ({ id, name, priceCents, active }));
       hooks.afterLookup?.();
       return r;
     },
@@ -93,6 +106,11 @@ function world() {
         if (!a || a.status !== "COMPLETED" || a.priceCents !== it.unitPriceCents || isBilled(tenantId, a.id)) {
           return { ok: false, reason: "APPOINTMENT_UNAVAILABLE", description: it.description };
         }
+      }
+      for (const it of sale.items.filter((i) => i.kind === "SERVICE")) {
+        const sv = services.find((x) => x.id === it.serviceId && x.tenantId === tenantId);
+        if (!sv || !sv.active) return { ok: false, reason: "SERVICE_UNAVAILABLE", serviceName: sv?.name ?? it.description };
+        if (sv.priceCents !== it.unitPriceCents) return { ok: false, reason: "SERVICE_CHANGED", serviceName: sv.name };
       }
       const decrements: { p: P; qty: number }[] = [];
       for (const it of sale.items.filter((i) => i.kind === "PRODUCT")) {
@@ -117,6 +135,9 @@ function world() {
         subtotalCents: sale.subtotalCents,
         discountCents: sale.discountCents,
         totalCents: sale.totalCents,
+        creditAppliedCents: sale.creditAppliedCents,
+        returnedValueCents: 0,
+        refundedCents: 0,
         notes: sale.notes,
         createdAt: clock.now,
         createdById: sale.userId,
@@ -124,7 +145,7 @@ function world() {
         canceledAt: null,
         cancelReason: null,
         itemCount: sale.items.length,
-        items: sale.items.map((i) => ({ ...i, id: `item${++ids}` })),
+        items: sale.items.map((i) => ({ ...i, id: `item${++ids}`, returnedQuantity: 0 })),
       };
       sales.push(record);
       for (const { p, qty } of decrements) {
@@ -152,8 +173,11 @@ function world() {
     async listSales(tenantId, { from, to }) {
       return sales.filter((s) => s.tenantId === tenantId && s.createdAt >= from && s.createdAt < to).sort((a, b) => b.number - a.number);
     },
+    async listReturnsInRange() {
+      return [];
+    },
   };
-  return { repo, clock, hooks, products, appts, sales, movements };
+  return { repo, clock, hooks, products, services, appts, sales, movements };
 }
 
 const as = (role: Role, tenantId: string, userId: string): SessionPayload => ({ userId, tenantId, role });
@@ -393,9 +417,13 @@ describe("cobrar atendimentos", () => {
 
   it("detecta atendimento cobrado por outra venda entre a tela e a confirmação (corrida)", async () => {
     const w = world();
+    // o gancho dispara depois de cada consulta (produtos, serviços, atendimentos): a 3ª é a dos atendimentos,
+    // então a venda concorrente aparece SÓ depois da leitura e quem pega é a checagem atômica do repositório
+    let calls = 0;
     w.hooks.afterLookup = () => {
-      w.hooks.afterLookup = undefined;
-      w.sales.push({ ...({} as SaleDetail), id: "outra", tenantId: "A", status: "COMPLETED", items: [{ kind: "APPOINTMENT", appointmentId: "aA1" } as SaleDetail["items"][number]] });
+      if (++calls !== 3) return;
+      const item = { kind: "APPOINTMENT", appointmentId: "aA1", returnedQuantity: 0 } as SaleDetail["items"][number];
+      w.sales.push({ ...({} as SaleDetail), id: "outra", tenantId: "A", status: "COMPLETED", items: [item] });
     };
     await expect(sell(w.repo, appointmentOnly(["aA1"]))).rejects.toThrow(APPOINTMENT_UNAVAILABLE_MESSAGE);
   });
@@ -480,13 +508,24 @@ describe("resumo e listagem do dia", () => {
     expect(s).toEqual({
       completedCount: 3,
       canceledCount: 1,
+      returnCount: 0,
+      soldCents: 1750,
+      refundedCents: 0,
       totalCents: 1750,
       byMethod: { CASH: 250, PIX: 1500, DEBIT: 0, CREDIT: 0 },
     });
   });
 
   it("sem vendas, tudo zerado", () => {
-    expect(summarizeSales([])).toEqual({ completedCount: 0, canceledCount: 0, totalCents: 0, byMethod: { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 } });
+    expect(summarizeSales([])).toEqual({
+      completedCount: 0,
+      canceledCount: 0,
+      returnCount: 0,
+      soldCents: 0,
+      refundedCents: 0,
+      totalCents: 0,
+      byMethod: { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 },
+    });
   });
 
   it("lista pelo dia LOCAL do pet shop (23:30 de 13/10 e 00:00 de 14/10 são dias diferentes)", async () => {
@@ -574,5 +613,128 @@ describe("permissões", () => {
     await expect(createSale(spy, groomerA, base)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(cancelSale(spy, attA, "x", { reason: "abc" })).rejects.toBeInstanceOf(ForbiddenError);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("serviço avulso (sem agendamento)", () => {
+  const svc = (serviceId: string, quantity: unknown = 1) => ({ kind: "SERVICE", serviceId, quantity });
+
+  it("vende um serviço do catálogo: preço do cadastro, sem mexer no estoque", async () => {
+    const w = world();
+    const sale = await sell(w.repo, { items: [{ ...svc("svA1"), unitPriceCents: 1 }] }); // preço do cliente é ignorado
+    expect(sale).toMatchObject({ number: 1, subtotalCents: 5000, totalCents: 5000, customerId: null });
+    expect(sale.items).toMatchObject([
+      { kind: "SERVICE", serviceId: "svA1", productId: null, appointmentId: null, description: "Banho avulso", unitPriceCents: 5000, quantity: 1, totalCents: 5000 },
+    ]);
+    expect(w.movements).toHaveLength(0);
+  });
+
+  it("soma linhas repetidas do mesmo serviço e aceita quantidade", async () => {
+    const w = world();
+    const sale = await sell(w.repo, { items: [svc("svA1", 2), svc("svA1", 1)] });
+    expect(sale.items).toHaveLength(1);
+    expect(sale.items[0]).toMatchObject({ quantity: 3, totalCents: 15000 });
+  });
+
+  it("mistura serviço avulso, produto e atendimento no mesmo pedido", async () => {
+    const w = world();
+    const sale = await sell(w.repo, {
+      items: [{ kind: "PRODUCT", productId: "prA1", quantity: 1 }, svc("svA1"), { kind: "APPOINTMENT", appointmentId: "aA1" }],
+    });
+    expect(sale.subtotalCents).toBe(3000 + 5000 + 5000);
+    expect(sale.items.map((i) => i.kind).sort()).toEqual(["APPOINTMENT", "PRODUCT", "SERVICE"]);
+  });
+
+  it("serviço desativado ou inexistente fica indisponível", async () => {
+    const w = world();
+    await expect(sell(w.repo, { items: [svc("svA2")] })).rejects.toThrow(new ValidationError("Serviço indisponível: Tosa avulsa"));
+    await expect(sell(w.repo, { items: [svc("nao-existe")] })).rejects.toThrow("Serviço indisponível");
+  });
+
+  it("serviço de outro pet shop se comporta como inexistente", async () => {
+    const w = world();
+    await expect(sell(w.repo, { items: [svc("svB1")] })).rejects.toThrow("Serviço indisponível");
+  });
+
+  // O gancho dispara depois de cada consulta (produtos, serviços, atendimentos); a 2ª é a de serviços.
+  const afterServicesLookup = (w: ReturnType<typeof world>, change: () => void) => {
+    let calls = 0;
+    w.hooks.afterLookup = () => {
+      if (++calls === 2) change();
+    };
+  };
+
+  it("detecta preço do serviço alterado entre a tela e a confirmação (corrida)", async () => {
+    const w = world();
+    afterServicesLookup(w, () => {
+      w.services[0].priceCents = 9999;
+    });
+    const err = await sell(w.repo, { items: [svc("svA1")] }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.message).toBe("O preço de Banho avulso foi alterado. Atualize a página e refaça a venda");
+    expect(w.sales).toHaveLength(0);
+  });
+
+  it("detecta serviço desativado entre a tela e a confirmação (corrida)", async () => {
+    const w = world();
+    afterServicesLookup(w, () => {
+      w.services[0].active = false;
+    });
+    await expect(sell(w.repo, { items: [svc("svA1")] })).rejects.toThrow("Serviço indisponível: Banho avulso");
+  });
+
+  it.each([0, "abc", 10000])("quantidade inválida do serviço (%j)", async (quantity) => {
+    const w = world();
+    await expect(sell(w.repo, { items: [svc("svA1", quantity)] })).rejects.toThrow("Quantidade inválida (de 1 a 9999)");
+  });
+});
+
+describe("prepareSale (usada também pela troca)", () => {
+  it("troca não aceita atendimento agendado nem desconto", async () => {
+    const w = world();
+    await expect(
+      prepareSale(w.repo, attA, { ...base, items: [{ kind: "APPOINTMENT", appointmentId: "aA1" }] }, { allowAppointments: false }),
+    ).rejects.toThrow("Atendimentos agendados não entram em uma troca");
+    await expect(prepareSale(w.repo, attA, { ...base, discount: "5" }, { allowDiscount: false })).rejects.toThrow(
+      "Desconto não é permitido nesta operação",
+    );
+  });
+
+  it("não grava nada: só monta a venda", async () => {
+    const w = world();
+    const prepared = await prepareSale(w.repo, attA, base);
+    expect(prepared).toMatchObject({ subtotalCents: 6000, totalCents: 6000, creditAppliedCents: 0, userId: "att-A" });
+    expect(w.sales).toHaveLength(0);
+    expect(stockOf(w, "prA1")).toBe(10);
+  });
+});
+
+describe("resumo com devoluções e trocas", () => {
+  it("a devolução sai da forma escolhida e a parte paga com crédito não entra como dinheiro recebido", () => {
+    const s = summarizeSales(
+      [
+        { status: "COMPLETED", paymentMethod: "PIX", totalCents: 10000 },
+        { status: "COMPLETED", paymentMethod: "CASH", totalCents: 5000, creditAppliedCents: 3000 }, // troca: recebeu só 2.000
+      ],
+      [
+        { refundCents: 1500, refundMethod: "CASH" },
+        { refundCents: 0, refundMethod: null }, // troca sem devolver dinheiro
+      ],
+    );
+    expect(s).toEqual({
+      completedCount: 2,
+      canceledCount: 0,
+      returnCount: 2,
+      soldCents: 15000,
+      refundedCents: 1500,
+      totalCents: 12000 - 1500,
+      byMethod: { CASH: 2000 - 1500, PIX: 10000, DEBIT: 0, CREDIT: 0 },
+    });
+  });
+
+  it("o líquido de uma forma pode ficar negativo (devolveu em dinheiro uma venda paga no Pix)", () => {
+    const s = summarizeSales([], [{ refundCents: 700, refundMethod: "CASH" }]);
+    expect(s.byMethod.CASH).toBe(-700);
+    expect(s.totalCents).toBe(-700);
   });
 });

@@ -6,11 +6,26 @@ const name = z.string({ required_error: "Informe o nome do produto", invalid_typ
   .min(2, "Informe o nome do produto")
   .max(80, "Máximo de 80 caracteres no nome");
 
+const fixedDigits = (len: number, message: string) =>
+  z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .transform((s) => s.replace(/\D/g, ""))
+      .refine((d) => d.length === len, message)
+      .optional(),
+  );
+
 export const productSchema = z.object({
   name,
   price: priceField({ allowZero: false }),
   minStock: intField({ min: 0, max: 99_999, message: "Informe o estoque mínimo (número inteiro, de 0 a 99999)", defaultValue: 0 }),
   initialStock: intField({ min: 0, max: 999_999, message: "Informe o estoque inicial (número inteiro, de 0 a 999999)", defaultValue: 0 }),
+  // Fiscal (opcionais): só são exigidos na hora de emitir a nota
+  ncm: fixedDigits(8, "NCM inválido (8 dígitos)"),
+  cfop: fixedDigits(4, "CFOP inválido (4 dígitos)"),
+  csosn: fixedDigits(3, "CSOSN inválido (3 dígitos)"),
+  unit: z.preprocess(emptyToUndefined, z.string().trim().toUpperCase().regex(/^[A-Z]{1,6}$/, "Unidade inválida (ex.: UN, KG, PC)").optional()),
 });
 
 export const productUpdateSchema = productSchema.omit({ initialStock: true });

@@ -60,7 +60,15 @@ export default async function ProdutoPage({ params }: { params: Promise<{ id: st
           <ProductForm
             action={updateProductAction.bind(null, product.id)}
             submitLabel="Salvar produto"
-            defaults={{ name: product.name, price: centsToInput(product.priceCents), minStock: String(product.minStock) }}
+            defaults={{
+              name: product.name,
+              price: centsToInput(product.priceCents),
+              minStock: String(product.minStock),
+              ncm: product.ncm ?? "",
+              cfop: product.cfop ?? "",
+              csosn: product.csosn ?? "",
+              unit: product.unit ?? "UN",
+            }}
           />
           <form action={toggleProductActiveAction} style={{ marginTop: "1rem" }}>
             <input type="hidden" name="id" value={product.id} />

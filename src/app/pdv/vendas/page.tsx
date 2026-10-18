@@ -27,7 +27,7 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
     error = e.message;
     day = await listSales(prismaSalesRepo, session);
   }
-  const { date, sales, summary } = day;
+  const { date, sales, returns, summary } = day;
 
   return (
     <main style={{ maxWidth: 980, margin: "3rem auto", padding: "0 1rem" }}>
@@ -57,10 +57,15 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
 
       <section style={{ border: "1px solid #999", padding: "0.75rem", margin: "1rem 0" }}>
         <p>
-          Total vendido: <strong data-testid="sales-total">{formatBRL(summary.totalCents)}</strong> · {summary.completedCount}{" "}
+          Total do dia (líquido de devoluções): <strong data-testid="sales-total">{formatBRL(summary.totalCents)}</strong> · {summary.completedCount}{" "}
           {summary.completedCount === 1 ? "venda concluída" : "vendas concluídas"}
           {summary.canceledCount > 0 && ` · ${summary.canceledCount} cancelada(s)`}
         </p>
+        {summary.returnCount > 0 && (
+          <p>
+            Devoluções: {summary.returnCount} · dinheiro devolvido: <span data-testid="refunded-total">{formatBRL(summary.refundedCents)}</span>
+          </p>
+        )}
         <ul style={{ margin: 0 }}>
           {PAYMENT_METHODS.map((m) => (
             <li key={m} data-testid={`method-${m}`}>
@@ -103,6 +108,40 @@ export default async function VendasPage({ searchParams }: { searchParams: Promi
             ))}
           </tbody>
         </table>
+      )}
+
+      {returns.length > 0 && (
+        <section>
+          <h2>Devoluções do dia</h2>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th align="left">Nº</th>
+                <th align="left">Venda</th>
+                <th align="left">Valor</th>
+                <th align="left">Devolvido</th>
+                <th align="left">Forma</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {returns.map((r) => (
+                <tr key={r.id} data-testid="return-row">
+                  <td>#{r.number}</td>
+                  <td>
+                    <Link href={`/pdv/vendas/${r.saleId}`}>#{r.saleNumber}</Link>
+                  </td>
+                  <td>{formatBRL(r.valueCents)}</td>
+                  <td>{r.refundCents > 0 ? formatBRL(r.refundCents) : "— (troca)"}</td>
+                  <td>{r.refundMethod ? PAYMENT_LABEL[r.refundMethod] : "—"}</td>
+                  <td>
+                    <Link href={`/pdv/devolucoes/${r.id}`}>Ver</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       )}
     </main>
   );

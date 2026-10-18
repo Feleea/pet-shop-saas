@@ -15,7 +15,7 @@ export interface InventoryFormState {
   values?: Record<string, string>;
 }
 
-const PRODUCT_FIELDS = ["name", "price", "minStock", "initialStock"] as const;
+const PRODUCT_FIELDS = ["name", "price", "minStock", "initialStock", "ncm", "cfop", "csosn", "unit"] as const;
 const ENTRY_FIELDS = ["quantity", "note"] as const;
 const ADJUST_FIELDS = ["delta", "reason"] as const;
 

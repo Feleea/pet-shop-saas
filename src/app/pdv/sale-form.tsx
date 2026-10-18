@@ -11,6 +11,11 @@ export interface ProductOption {
   priceCents: number;
   stock: number;
 }
+export interface ServiceOption {
+  id: string;
+  name: string;
+  priceCents: number;
+}
 export interface AppointmentOption {
   id: string;
   label: string;
@@ -24,18 +29,22 @@ export interface CustomerOption {
 
 type Line =
   | { kind: "PRODUCT"; productId: string; name: string; unitPriceCents: number; quantity: number; stock: number }
+  | { kind: "SERVICE"; serviceId: string; name: string; unitPriceCents: number; quantity: number }
   | { kind: "APPOINTMENT"; appointmentId: string; name: string; unitPriceCents: number; customerId: string };
 
 const field = { display: "block", width: "100%" } as const;
 const initial: SaleFormState = {};
+const lineKey = (l: Line) => (l.kind === "PRODUCT" ? `p-${l.productId}` : l.kind === "SERVICE" ? `s-${l.serviceId}` : `a-${l.appointmentId}`);
 
 export function SaleForm({
   products,
+  services,
   appointments,
   customers,
   initialAppointmentId,
 }: {
   products: ProductOption[];
+  services: ServiceOption[];
   appointments: AppointmentOption[];
   customers: CustomerOption[];
   initialAppointmentId?: string;
@@ -48,6 +57,8 @@ export function SaleForm({
   });
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [serviceId, setServiceId] = useState("");
+  const [serviceQuantity, setServiceQuantity] = useState("1");
   const [appointmentId, setAppointmentId] = useState("");
   const [localError, setLocalError] = useState("");
   const [payment, setPayment] = useState("");
@@ -58,10 +69,12 @@ export function SaleForm({
   const appointmentLine = lines.find((l) => l.kind === "APPOINTMENT");
   const customerId = appointmentLine?.kind === "APPOINTMENT" ? appointmentLine.customerId : customerChoice;
 
+  const validQuantity = (raw: string) => /^\d{1,4}$/.test(raw.trim()) && Number(raw) >= 1;
+
   function addProduct() {
     const p = products.find((x) => x.id === productId);
     if (!p) return setLocalError("Escolha um produto");
-    if (!/^\d{1,4}$/.test(quantity.trim()) || Number(quantity) < 1) return setLocalError("Quantidade inválida (de 1 a 9999)");
+    if (!validQuantity(quantity)) return setLocalError("Quantidade inválida (de 1 a 9999)");
     setLocalError("");
     const qty = Number(quantity);
     setLines((prev) => {
@@ -73,6 +86,23 @@ export function SaleForm({
     });
     setProductId("");
     setQuantity("1");
+  }
+
+  function addService() {
+    const s = services.find((x) => x.id === serviceId);
+    if (!s) return setLocalError("Escolha um serviço");
+    if (!validQuantity(serviceQuantity)) return setLocalError("Quantidade inválida (de 1 a 9999)");
+    setLocalError("");
+    const qty = Number(serviceQuantity);
+    setLines((prev) => {
+      const existing = prev.find((l) => l.kind === "SERVICE" && l.serviceId === s.id);
+      if (existing && existing.kind === "SERVICE") {
+        return prev.map((l) => (l === existing ? { ...existing, quantity: Math.min(existing.quantity + qty, 9999) } : l));
+      }
+      return [...prev, { kind: "SERVICE", serviceId: s.id, name: s.name, unitPriceCents: s.priceCents, quantity: qty }];
+    });
+    setServiceId("");
+    setServiceQuantity("1");
   }
 
   function addAppointment() {
@@ -93,14 +123,14 @@ export function SaleForm({
   function setLineQuantity(index: number, raw: string) {
     setLines((prev) =>
       prev.map((l, i) => {
-        if (i !== index || l.kind !== "PRODUCT") return l;
+        if (i !== index || l.kind === "APPOINTMENT") return l;
         const n = /^\d{1,4}$/.test(raw.trim()) ? Math.max(1, Number(raw)) : l.quantity;
         return { ...l, quantity: n };
       }),
     );
   }
 
-  const lineTotal = (l: Line) => (l.kind === "PRODUCT" ? l.unitPriceCents * l.quantity : l.unitPriceCents);
+  const lineTotal = (l: Line) => (l.kind === "APPOINTMENT" ? l.unitPriceCents : l.unitPriceCents * l.quantity);
   const subtotal = lines.reduce((sum, l) => sum + lineTotal(l), 0);
   const parsedDiscount = discount.trim() === "" ? 0 : (parsePriceToCents(discount) ?? 0);
   const total = Math.max(subtotal - parsedDiscount, 0);
@@ -109,7 +139,9 @@ export function SaleForm({
     lines.map((l) =>
       l.kind === "PRODUCT"
         ? { kind: "PRODUCT", productId: l.productId, quantity: l.quantity }
-        : { kind: "APPOINTMENT", appointmentId: l.appointmentId },
+        : l.kind === "SERVICE"
+          ? { kind: "SERVICE", serviceId: l.serviceId, quantity: l.quantity }
+          : { kind: "APPOINTMENT", appointmentId: l.appointmentId },
     ),
   );
   const error = localError || state.error;
@@ -135,6 +167,28 @@ export function SaleForm({
         </label>
         <button type="button" onClick={addProduct}>
           Adicionar produto
+        </button>
+      </fieldset>
+
+      <fieldset style={{ display: "grid", gap: "0.5rem" }}>
+        <legend>Serviços avulsos (sem agendamento)</legend>
+        <label>
+          Serviço
+          <select data-testid="service-select" value={serviceId} onChange={(e) => setServiceId(e.target.value)} style={field}>
+            <option value="">Selecione</option>
+            {services.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} — {formatBRL(s.priceCents)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Quantidade do serviço
+          <input data-testid="service-quantity" value={serviceQuantity} onChange={(e) => setServiceQuantity(e.target.value)} inputMode="numeric" style={field} />
+        </label>
+        <button type="button" onClick={addService}>
+          Adicionar serviço
         </button>
       </fieldset>
 
@@ -173,10 +227,12 @@ export function SaleForm({
             </thead>
             <tbody>
               {lines.map((l, i) => (
-                <tr key={l.kind === "PRODUCT" ? `p-${l.productId}` : `a-${l.appointmentId}`} data-testid="cart-line">
+                <tr key={lineKey(l)} data-testid="cart-line">
                   <td>{l.name}</td>
                   <td>
-                    {l.kind === "PRODUCT" ? (
+                    {l.kind === "APPOINTMENT" ? (
+                      1
+                    ) : (
                       <input
                         aria-label={`Quantidade de ${l.name}`}
                         value={l.quantity}
@@ -184,8 +240,6 @@ export function SaleForm({
                         inputMode="numeric"
                         size={4}
                       />
-                    ) : (
-                      1
                     )}
                   </td>
                   <td>{formatBRL(l.unitPriceCents)}</td>
@@ -205,12 +259,7 @@ export function SaleForm({
       <section style={{ display: "grid", gap: "0.5rem" }}>
         <label>
           Cliente (opcional)
-          <select
-            value={customerId}
-            onChange={(e) => setCustomerChoice(e.target.value)}
-            disabled={Boolean(appointmentLine)}
-            style={field}
-          >
+          <select value={customerId} onChange={(e) => setCustomerChoice(e.target.value)} disabled={Boolean(appointmentLine)} style={field}>
             <option value="">Sem cliente</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { prismaCatalogRepo } from "@/lib/catalog-repo";
+import { listServices } from "@/lib/catalog-service";
 import { prismaCustomerRepo } from "@/lib/customer-repo";
 import { listCustomers } from "@/lib/customer-service";
 import { formatDateTimeBR } from "@/lib/datetime-format";
@@ -19,8 +21,9 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
   if (!can(session.role, "sell")) redirect("/painel");
   const { atendimento } = await searchParams;
 
-  const [products, appointments, customers] = await Promise.all([
+  const [products, services, appointments, customers] = await Promise.all([
     listProducts(prismaInventoryRepo, session),
+    listServices(prismaCatalogRepo, session),
     listBillableAppointments(prismaSalesRepo, session),
     listCustomers(prismaCustomerRepo, session),
   ]);
@@ -42,6 +45,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
       )}
       <SaleForm
         products={products.map((p) => ({ id: p.id, name: p.name, priceCents: p.priceCents, stock: p.stockQuantity }))}
+        services={services.map((s) => ({ id: s.id, name: s.name, priceCents: s.priceCents }))}
         appointments={appointments.map((a) => ({
           id: a.id,
           label: `${a.petName} (${a.customerName}) — ${a.serviceName} — ${formatDateTimeBR(a.startsAt)} — ${formatBRL(a.priceCents)}`,

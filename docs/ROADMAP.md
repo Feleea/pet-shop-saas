@@ -86,12 +86,35 @@
 - `sell` (ADMIN e ATTENDANT) usa o PDV e vê as vendas; **GROOMER e VET não veem as vendas** (dinheiro) mas consultam o estoque.
 - Cliente, pet e produto com vendas **não podem ser excluídos** (FK com Restrict). O resumo do dia usa o horário de Brasília.
 
+## Decisões da Fase 4.1 (serviço avulso, devolução/troca, comprovante e nota fiscal)
+**Serviço avulso**
+- Novo tipo de item de venda: `SERVICE` (serviço do catálogo, sem agendamento), com preço copiado do catálogo (snapshot) e checagem atômica de preço/ativo na gravação. Não mexe no estoque.
+
+**Devolução e troca**
+- Devolução **parcial ou total** por item e quantidade. O valor devolvido é o preço dos itens **menos o desconto da venda rateado**; a devolução que fecha a venda acerta os centavos, e a soma nunca passa do total (`src/lib/returns-math.ts`, a mesma conta na tela e no servidor).
+- **Troca** = devolução + nova venda na **mesma transação**: o valor devolvido vira crédito na nova venda; sobra → dinheiro de volta; falta → o cliente paga a diferença. Se a nova venda falhar (ex.: sem estoque), a devolução também é desfeita.
+- "Devolver ao estoque" é uma escolha (produto avariado não volta). Serviço/atendimento devolvido devolve o valor; atendimento devolvido pode ser cobrado de novo.
+- Trava por venda: devolução x devolução x cancelamento x emissão de nota da MESMA venda nunca se intercalam.
+- **Venda com devolução não pode ser cancelada**; **venda com nota fiscal ativa não aceita devolução nem cancelamento**; em vendas nascidas de troca, o dinheiro devolvido não passa do que foi pago.
+- Permissões: nova ação `return` (ADMIN e ATTENDANT). Cancelar a venda inteira continua só ADMIN.
+- Resumo do dia: **líquido** (recebido − devolvido), por forma de pagamento (pode ficar negativo se a devolução saiu por outra forma). Na troca, a parte paga com crédito não conta como dinheiro recebido.
+- Numeração própria de devoluções por pet shop.
+
+**Comprovante para impressão**
+- `/pdv/vendas/[id]/comprovante` e `/pdv/devolucoes/[id]`: largura de bobina (80 mm), botão Imprimir, e a impressão esconde menus e botões. Mostra os dados da empresa quando cadastrados. Sem nota autorizada, diz "DOCUMENTO SEM VALOR FISCAL".
+
+**Nota fiscal (fundação, NÃO emite nota válida)**
+- Dados da empresa em `/configuracoes` (só ADMIN) e dados fiscais em produto (NCM, CFOP, CSOSN, unidade) e serviço (código da LC 116, ISS em centésimos de ponto percentual).
+- Produtos → NFC-e; serviços e atendimentos → NFS-e. Validação antes de emitir lista tudo que falta. Ciclo de vida, numeração, cancelamento com justificativa e prazo, trava contra duplicidade.
+- Provedor **simulado** (sem validade fiscal, marcado em tudo) e interface `FiscalProvider` para ligar um emissor real. **Leia `docs/FISCAL.md`**: lá está o que falta para emitir de verdade e o que precisa ser validado com o contador.
+
 ## Pendências conhecidas do PDV e do estoque
-- Venda de **serviço avulso** (sem agendamento) e **devolução/troca parcial** (hoje só o cancelamento total).
+- **Emissão fiscal real** (provedor, certificado, credenciamento, validação do contador), DANFE-NFC-e com QR Code, NF-e, contingência e devolução fiscal. Ver `docs/FISCAL.md`.
 - **Pagamento dividido** em mais de uma forma, troco e **abertura/fechamento de caixa**.
-- Comprovante para impressão e **nota fiscal** (NFC-e); relatórios por período, produto e vendedor.
+- Prazo máximo para devoluções (hoje não há) e vale-troca (crédito que o cliente guarda para usar depois; hoje a troca é na hora).
+- Relatórios por período, produto e vendedor.
 - Código de barras/SKU, preço de custo e margem, fornecedores, pedidos de compra, lote e validade.
-- Estoque negativo é bloqueado; se o pet shop precisar vender "sem saldo" (saldo ainda não lançado), será uma opção futura.
+- Estoque negativo é bloqueado; se o pet shop precisar vender "sem saldo", será uma opção futura.
 
 ## Pendências conhecidas da agenda
 - Visualização semanal/por profissional em colunas e horários livres sugeridos.
