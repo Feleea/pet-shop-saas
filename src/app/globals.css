@@ -40,6 +40,33 @@ a:hover {
   color: var(--color-primary-hover);
 }
 
+.button-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 650;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.button-link:hover {
+  border-color: var(--color-primary-hover);
+  background: #e7f3e9;
+  color: var(--color-primary-hover);
+}
+
+.button-link:active {
+  transform: translateY(1px);
+}
+
 button,
 input,
 select,

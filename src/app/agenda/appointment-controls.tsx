@@ -28,7 +28,7 @@ export function AppointmentControls({ id, canComplete, canManage }: { id: string
         )}
         {canManage && (
           <>
-            <Link href={`/agenda/${id}/reagendar`}>Reagendar</Link>
+            <Link className="button-link" href={`/agenda/${id}/reagendar`}>Reagendar</Link>
             <form action={action}>
               {hidden("NO_SHOW")}
               <button type="submit" disabled={pending}>

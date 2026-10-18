@@ -36,7 +36,7 @@ export default async function PdvPage({ searchParams }: { searchParams: Promise<
       </p>
       <h1>PDV — Nova venda</h1>
       <p>
-        <Link href="/pdv/vendas">Vendas do dia</Link>
+        <Link className="button-link" href="/pdv/vendas">Vendas do dia</Link>
       </p>
       {atendimento && !preload && (
         <p role="alert" style={{ color: "crimson" }}>

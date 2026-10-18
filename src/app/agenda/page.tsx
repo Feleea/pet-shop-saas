@@ -71,7 +71,7 @@ export default async function AgendaPage({ searchParams }: { searchParams: Promi
 
       {canWrite && (
         <p>
-          <Link href={`/agenda/novo?data=${agenda.date}`}>Novo agendamento</Link>
+          <Link className="button-link" href={`/agenda/novo?data=${agenda.date}`}>Novo agendamento</Link>
         </p>
       )}
 

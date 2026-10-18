@@ -46,7 +46,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
 
       {canManage && (
         <p>
-          <Link href="/estoque/novo">Novo produto</Link>
+          <Link className="button-link" href="/estoque/novo">Novo produto</Link>
         </p>
       )}
 
@@ -75,7 +75,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
                 <td>{p.minStock}</td>
                 <td data-testid="stock-level">{p.active ? LEVEL_TEXT[stockLevel(p)] : "Inativo"}</td>
                 <td>
-                  <Link href={`/estoque/${p.id}`}>Detalhes</Link>
+                  <Link className="button-link" href={`/estoque/${p.id}`}>Detalhes</Link>
                 </td>
               </tr>
             ))}

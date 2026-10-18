@@ -22,7 +22,7 @@ export default async function ServicosPage() {
 
       {canManage && (
         <p>
-          <Link href="/servicos/novo">Novo serviço</Link>
+          <Link className="button-link" href="/servicos/novo">Novo serviço</Link>
         </p>
       )}
 
@@ -51,7 +51,7 @@ export default async function ServicosPage() {
                 {canManage && <td>{s.active ? "Ativo" : "Inativo"}</td>}
                 {canManage && (
                   <td style={{ display: "flex", gap: "0.5rem" }}>
-                    <Link href={`/servicos/${s.id}/editar`}>Editar</Link>
+                    <Link className="button-link" href={`/servicos/${s.id}/editar`}>Editar</Link>
                     <form action={toggleServiceActiveAction}>
                       <input type="hidden" name="id" value={s.id} />
                       <input type="hidden" name="active" value={String(!s.active)} />
