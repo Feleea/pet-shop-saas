@@ -8,20 +8,20 @@ const initial: FormState = {};
 export function LoginForm() {
   const [state, action, pending] = useActionState(loginAction, initial);
   return (
-    <form action={action} style={{ display: "grid", gap: "0.75rem" }}>
+    <form action={action} className="login-form">
       <label>
         Código do pet shop
-        <input name="slug" required style={{ display: "block", width: "100%" }} />
+        <input name="slug" autoComplete="organization" required />
       </label>
       <label>
         E-mail
-        <input name="email" type="email" required style={{ display: "block", width: "100%" }} />
+        <input name="email" type="email" autoComplete="email" required />
       </label>
       <label>
         Senha
-        <input name="password" type="password" required style={{ display: "block", width: "100%" }} />
+        <input name="password" type="password" autoComplete="current-password" required />
       </label>
-      {state.error && <p role="alert" style={{ color: "crimson" }}>{state.error}</p>}
+      {state.error && <p className="login-error" role="alert">{state.error}</p>}
       <button type="submit" disabled={pending}>{pending ? "Entrando..." : "Entrar"}</button>
     </form>
   );
